@@ -25,7 +25,7 @@ if __name__ == '__main__':
     axes[2].imshow(filtered, cmap='gray')
 
     # thresshold
-    retval, binary_image = cv2.threshold(filtered, 100, 255, cv2.THRESH_BINARYs)
+    retval, binary_image = cv2.threshold(filtered, 100, 255, cv2.THRESH_BINARY)
 
-    plt.imshow(city_hall)
+    axes[3].imshow(binary_image, cmap='gray')
     plt.show()
