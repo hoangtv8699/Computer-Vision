@@ -29,7 +29,7 @@ class Net(nn.Module):
         # output size = (32, 13, 13)
         self.pool = nn.MaxPool2d(2, 2)
 
-        # input=10, output=64, kernel_size=3
+        # input=32, output=64, kernel_size=3
         # output size = (w-f)/s+1 w:weight/height , f=filter_size, s=stride_size
         # input 28*28, output = (13-3)/1 + 1 = 11
         # output size = (64, 11, 11)
