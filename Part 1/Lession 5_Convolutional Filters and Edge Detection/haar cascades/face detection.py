@@ -19,7 +19,7 @@ if __name__ == '__main__':
     plt.imshow(gray, cmap='gray')
 
     # load in cascade classifier
-    face_cascade = cv2.CascadeClassifier('../detector_architectures/haarcascade_frontalface_default.xml')
+    face_cascade = cv2.CascadeClassifier('../../../detector_architectures/haarcascade_frontalface_default.xml')
 
     # run the detector on the grayscale image
     faces = face_cascade.detectMultiScale(gray, 4, 6)
