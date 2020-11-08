@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from torch import Tensor
 
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms, utils
@@ -17,7 +18,7 @@ from models import Net
 
 
 # test the model on a batch of test images
-def net_sample_output(test_loader):
+def net_sample_output(test_loader, net):
     # iterate through the test dataset
     for i, sample in enumerate(test_loader):
 
@@ -26,7 +27,7 @@ def net_sample_output(test_loader):
         key_pts = sample['keypoints']
 
         # convert images to FloatTensors
-        images = images.type(torch.FloatTensor)
+        images = images.type(torch.cuda.FloatTensor)
 
         # forward pass to get net output
         output_pts = net(images)
@@ -50,18 +51,18 @@ def show_all_keypoints(image, predicted_key_pts, gt_pts=None):
 
 
 def visualize_output(test_images, test_outputs, gt_pts=None, batch_size=10):
+    plt.figure(figsize=(10, 10))
     for i in range(batch_size):
-        plt.figure(figsize=(10, 10))
         ax = plt.subplot(1, batch_size, i + 1)
 
         # un-transform the image data
         image = test_images[i].data  # get the image from it's wrapper
-        image = image.numpy()  # convert to numpy array from a Tensor
+        image = image.cpu().numpy()  # convert to numpy array from a Tensor
         image = np.transpose(image, (1, 2, 0))  # transpose to go from torch to numpy image
 
         # un-transform the predicted key_pts data
         predicted_key_pts = test_outputs[i].data
-        predicted_key_pts = predicted_key_pts.numpy()
+        predicted_key_pts = predicted_key_pts.cpu().numpy()
         # undo normalization of keypoints
         predicted_key_pts = predicted_key_pts * 50.0 + 100
 
@@ -79,7 +80,7 @@ def visualize_output(test_images, test_outputs, gt_pts=None, batch_size=10):
     plt.show()
 
 
-def train_net(n_epochs):
+def train_net(n_epochs, criterion, optimizer):
     # prepare the net for training
     net.train()
     # to track the loss as the network trains
@@ -88,6 +89,7 @@ def train_net(n_epochs):
     for epoch in range(n_epochs):  # loop over the dataset multiple times
 
         running_loss = 0.0
+        ep_loss = 0.0
 
         # train on batches of data, assumes you already have train_loader
         for batch_i, data in enumerate(train_loader):
@@ -99,8 +101,8 @@ def train_net(n_epochs):
             key_pts = key_pts.view(key_pts.size(0), -1)
 
             # convert variables to floats for regression loss
-            key_pts = key_pts.type(torch.FloatTensor)
-            images = images.type(torch.FloatTensor)
+            key_pts = key_pts.type(torch.cuda.FloatTensor)
+            images = images.type(torch.cuda.FloatTensor)
 
             # forward pass to get outputs
             output_pts = net(images)
@@ -120,24 +122,31 @@ def train_net(n_epochs):
             # print loss statistics
             # to convert loss into a scalar and add it to the running_loss, use .item()
             running_loss += loss.item()
-
+            ep_loss += loss.item()
             if batch_i % 10 == 9:  # print every 10 batches
                 avg_loss = running_loss/10
                 loss_over_time.append(avg_loss)
                 print('Epoch: {}, Batch: {}, Avg. Loss: {}'.format(epoch + 1, batch_i + 1, running_loss / 1000))
                 running_loss = 0.0
-
+        lr_scheduler.step(ep_loss/len(train_loader))
     print('Finished Training')
     return loss_over_time
 
 
 if __name__ == '__main__':
+    if torch.cuda.is_available():
+        dev = "cuda:0"
+    else:
+        dev = "cpu"
+    device = torch.device(dev)
+    print(device)
     net = Net()
+    net.to(device)
     print(net)
 
     # define the data_transform
-    data_transform = transforms.Compose([Rescale(128),
-                                         RandomCrop(96),
+    data_transform = transforms.Compose([Rescale(250),
+                                         RandomCrop(224),
                                          Normalize(),
                                          ToTensor()])
 
@@ -166,24 +175,30 @@ if __name__ == '__main__':
     test_loader = DataLoader(test_dataset,
                              batch_size=batch_size,
                              shuffle=True,
-                             num_workers=4)
+                             num_workers=0)
 
-    test_images, test_outputs, gt_pts = net_sample_output(test_loader)
-
-    # print out the dimensions of the data to see if they make sense
-    print(test_images.data.size())
-    print(test_outputs.data.size())
-    print(gt_pts.size())
-
+    # test_images, test_outputs, gt_pts = net_sample_output(test_loader, net)
+    #
+    # # print out the dimensions of the data to see if they make sense
+    # print(test_images.data.size())
+    # print(test_outputs.data.size())
+    # print(gt_pts.size())
+    #
     # visualize_output(test_images, test_outputs, gt_pts)
 
     criterion = nn.MSELoss()
+    optimizer = optim.Adam(net.parameters(), lr=0.1)
+    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.8, patience=5, min_lr=0.0001, verbose=True)
 
-    optimizer = optim.Adam(net.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-08)
+    n_epochs = 100  # start small, and increase when you've decided on your model structure and hyperparams
 
-    n_epochs = 5  # start small, and increase when you've decided on your model structure and hyperparams
+    training_loss = train_net(n_epochs, criterion, optimizer)
 
-    training_loss = train_net(n_epochs)
+    model_dir = 'saved_models/'
+    model_name = 'keypoints_model_5_ep.pt'
+
+    # after training, save your model parameters in the dir 'saved_models'
+    torch.save(net.state_dict(), model_dir + model_name)
 
     plt.plot(training_loss)
     plt.xlabel('1000\'s of batches')
@@ -192,15 +207,10 @@ if __name__ == '__main__':
     plt.show()
 
     # get a sample of test data again
-    test_images, test_outputs, gt_pts = net_sample_output(test_loader)
+    test_images, test_outputs, gt_pts = net_sample_output(test_loader, net)
 
     print(test_images.data.size())
     print(test_outputs.data.size())
     print(gt_pts.size())
     visualize_output(test_images, test_outputs, gt_pts)
 
-    model_dir = 'saved_models/'
-    model_name = 'keypoints_model_1.pt'
-
-    # after training, save your model parameters in the dir 'saved_models'
-    torch.save(net.state_dict(), model_dir + model_name)
