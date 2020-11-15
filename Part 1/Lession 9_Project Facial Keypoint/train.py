@@ -187,7 +187,7 @@ if __name__ == '__main__':
     # visualize_output(test_images, test_outputs, gt_pts)
 
     criterion = nn.MSELoss()
-    optimizer = optim.Adam(net.parameters(), lr=0.1)
+    optimizer = optim.Adam(net.parameters(), lr=0.001)
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.8, patience=5, min_lr=0.0001, verbose=True)
 
     n_epochs = 100  # start small, and increase when you've decided on your model structure and hyperparams
